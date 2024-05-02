@@ -16,8 +16,8 @@ static pthread_mutex_t vm_lock = PTHREAD_MUTEX_INITIALIZER;
 /*enlist_vm_freerg_list - add new rg to freerg_list
  *@mm: memory region
  *@rg_elmt: new region
- *
  */
+
 int enlist_vm_freerg_list(struct mm_struct *mm, struct vm_rg_struct* rg_elmt)
 {
   struct vm_rg_struct *rg_node = mm->mmap->vm_freerg_list;
@@ -272,8 +272,7 @@ int pg_getval(struct mm_struct *mm, int addr, BYTE *data, struct pcb_t *caller)
   if(pg_getpage(mm, pgn, &fpn, caller) != 0) 
     return -1; /* invalid page access */
 
-  int phyaddr = (fpn << PAGING_ADDR_FPN_LOBIT) + off;
-
+  int phyaddr = (fpn << 8) + off;
   MEMPHY_read(caller->mram,phyaddr, data);
 
   return 0;
