@@ -407,19 +407,22 @@ int pgwrite(
 {
 #ifdef IODUMP
   printf("process %d write region=%d offset=%d value=%d\n\n", proc->pid, destination, offset, data);
-#ifdef PAGETBL_DUMP
+#endif
+
   uint32_t max_offset = proc->mm->symrgtbl[destination].rg_end - proc->mm->symrgtbl[destination].rg_start - 1;
 
   if (offset > max_offset){
+#ifdef IODUMP
     printf("process %d access violation writing location: memory region %d\n", proc->pid, destination);
+#endif
     return -1;
   }
 
   int status = __write(proc, 0, destination, offset, data);
+#ifdef PAGETBL_DUMP
   if (status != -1) print_pgtbl(proc, 0, -1); // print max TBL
 #endif
   MEMPHY_dump(proc->mram);
-#endif
 
   return status;
 }
@@ -551,31 +554,41 @@ int find_victim_page(struct pcb_t *caller, struct framephy_struct *re_fp)
 {
   struct framephy_struct *fp_q = caller->mram->used_fp_list;
   struct framephy_struct *prev = NULL; 
-  struct vm_rg_struct *victim_rg = malloc(sizeof(struct vm_rg_struct)); 
 
+  struct vm_area_struct *cur_vma = get_vma_by_num(caller->mm, 0);
+  struct vm_rg_struct *rgit = cur_vma->vm_freerg_list;
   /* TODO: Implement the theorical mechanism to find the victim page */
     // check if free region list have frame
-    if (!get_free_vmrg_area(caller, 0, sizeof(struct vm_rg_struct), victim_rg)){
-      int vicpgn = PAGING_PGN(victim_rg->rg_start);
-      uint32_t vicpte = caller->mm->pgd[vicpgn];
-      int vicfpn = PAGING_FPN(vicpte); 
+    
+    if (rgit!=NULL){
+      int vicpgn = -1, vicfpn= -1;
+      uint32_t vicpte;
+      while(rgit!=NULL) {
+        int addr = rgit->rg_start;
+        do {
+          vicpgn = PAGING_PGN(addr);
+          vicpte = caller->mm->pgd[vicpgn];
+          addr += PAGING_PAGESZ;
+        } while(PAGING_PAGE_PRESENT(vicpte));
+        if(PAGING_PAGE_PRESENT(vicpte)) break;
+        else rgit = rgit->rg_next;
+      }
 
-      // TODO: remove the node in used_fp_list match fpn = vicfpn then return that node in re_fp
-      while (fp_q != NULL){
-        if (fp_q->fpn == vicfpn){
-          // Remove the node from the list
-          if (prev != NULL) prev->fp_next = fp_q->fp_next;
-          else caller->mram->used_fp_list = fp_q->fp_next;
-          // Set re_fp to the removed node
-          re_fp = fp_q;
-
-          // Free the victim_rg memory
-          free(victim_rg);
-
-          return 0;
+      if(PAGING_PAGE_PRESENT(vicpte)) {
+        vicfpn = PAGING_FPN(vicpte);
+        // TODO: remove the node in used_fp_list match fpn = vicfpn then return that node in re_fp
+        while (fp_q != NULL){
+          if (fp_q->fpn == vicfpn){
+            // Remove the node from the list
+            if (prev != NULL) prev->fp_next = fp_q->fp_next;
+            else caller->mram->used_fp_list = fp_q->fp_next;
+            // Set re_fp to the removed node
+            re_fp = fp_q;
+            return 0;
+          }
+          prev = fp_q;
+          fp_q = fp_q->fp_next;
         }
-        prev = fp_q;
-        fp_q = fp_q->fp_next;
       }
     }
 
