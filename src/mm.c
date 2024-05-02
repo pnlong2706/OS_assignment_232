@@ -147,8 +147,10 @@ int alloc_pages_range(struct pcb_t *caller, int req_pgnum, struct framephy_struc
       struct framephy_struct *victim_fp = (struct framephy_struct *)malloc(sizeof(struct framephy_struct));
       if (find_victim_page(caller, victim_fp) == -1 || MEMPHY_get_freefp(caller->active_mswp, &swpfpn) == -1){
         struct framephy_struct *freefp_str;
+        // Free those frame were obtained above, put it back to free list
         while (*frm_lst != NULL){
           freefp_str = *frm_lst;
+          MEMPHY_put_freefp(caller->mram, freefp_str->fpn);
           *frm_lst = (*frm_lst)->fp_next;
           free(freefp_str);
         }
