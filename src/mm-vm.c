@@ -137,13 +137,10 @@ int __alloc(struct pcb_t *caller, int vmaid, int rgid, int size, int *alloc_addr
  */
 int __free(struct pcb_t *caller, int vmaid, int rgid)
 {
-  //struct vm_rg_struct rgnode;
-
   if(rgid < 0 || rgid > PAGING_MAX_SYMTBL_SZ)
     return -1;
 
   /* TODO: Manage the collect freed region to freerg_list */
-
   /*enlist the obsoleted memory region */
   struct vm_rg_struct *free_rg = get_symrg_byid(caller->mm, rgid);
 
@@ -216,7 +213,7 @@ int pg_getpage(struct mm_struct *mm, int pgn, int *fpn, struct pcb_t *caller)
     int vicfpn;
     uint32_t vicpte;
 
-    int tgtfpn = PAGING_SWP(pte);//the target frame storing our variable
+    int tgtfpn = PAGING_SWP(pte); //the target frame storing our variable
 
     /* TODO: Play with your paging theory here */
     /* Find victim page */
@@ -245,11 +242,13 @@ int pg_getpage(struct mm_struct *mm, int pgn, int *fpn, struct pcb_t *caller)
     *fpn = PAGING_FPN(pte);
 
 #ifdef CPU_TLB
-    /* Update its online status of TLB (if needed) */
+    /* Update its online status of TLB*/
+    tlb_cache_set_invalid(caller->tlb, caller, vicpgn);
 #endif
 
     enlist_pgn_node(&caller->mm->fifo_pgn,pgn);
     enlist_fpn_node(&caller->mram->used_fp_list, *fpn, caller->mm, pgn, caller);
+    MEMPHY_put_freefp(caller->active_mswp, tgtfpn);
   }
 
   *fpn = PAGING_FPN(pte);
@@ -548,6 +547,7 @@ int inc_vma_limit(struct pcb_t *caller, int vmaid, int inc_sz)
  *@pgn: return page number
  *
  */
+
 int find_victim_page(struct pcb_t *caller, struct framephy_struct *re_fp) 
 {
   struct framephy_struct *fp_q = caller->mram->used_fp_list;
@@ -598,6 +598,63 @@ int find_victim_page(struct pcb_t *caller, struct framephy_struct *re_fp)
     return 0;
 }
 
+/*find_victim_page - find victim page
+ *@caller: caller
+ *@pgn: return page number
+ *
+ */
+
+int find_victim_page_org(struct pcb_t *caller, int *retpgn)
+{
+  struct framephy_struct *fp_q = caller->mram->used_fp_list;
+  struct framephy_struct *prev = NULL; 
+  struct vm_rg_struct *victim_rg = malloc(sizeof(struct vm_rg_struct)); 
+
+  /* TODO: Implement the theorical mechanism to find the victim page */
+    // check if free region list have frame
+    if (!get_free_vmrg_area(caller, 0, sizeof(struct vm_rg_struct), victim_rg)){
+      int vicpgn = PAGING_PGN(victim_rg->rg_start);
+      uint32_t vicpte = caller->mm->pgd[vicpgn];
+      int vicfpn = PAGING_FPN(vicpte); 
+
+      // TODO: remove the node in used_fp_list match fpn = vicfpn then return that node in re_fp
+      while (fp_q != NULL){
+        if (fp_q->fpn == vicfpn){
+          // Remove the node from the list
+          if (prev != NULL) prev->fp_next = fp_q->fp_next;
+          else caller->mram->used_fp_list = fp_q->fp_next;
+          // Set retpgn
+          *retpgn = vicpgn;
+
+          // Free the victim_rg memory
+          free(victim_rg);
+
+          return 0;
+        }
+        prev = fp_q;
+        fp_q = fp_q->fp_next;
+      }
+      return 0;
+    }
+
+    if (fp_q == NULL) return -1; // The FIFO queue is empty, which should not happen
+
+    // Traverse to the end of the FIFO queue to find the oldest page
+    while (fp_q->fp_next != NULL){
+      prev = fp_q;
+      fp_q = fp_q->fp_next;
+    }
+
+    // Get the page number of the oldest page
+    *retpgn = fp_q->pte_id;
+
+    // Remove the oldest page from the FIFO queue
+    if (prev != NULL) prev->fp_next = NULL;
+    else caller->mram->used_fp_list = NULL;
+    free(fp_q);
+
+    return 0;
+}
 
 /*get_free_vmrg_area - get a free vm region
  *@caller: caller
@@ -608,7 +665,6 @@ int find_victim_page(struct pcb_t *caller, struct framephy_struct *re_fp)
 int get_free_vmrg_area(struct pcb_t *caller, int vmaid, int size, struct vm_rg_struct *newrg)
 {
   struct vm_area_struct *cur_vma = get_vma_by_num(caller->mm, vmaid);
-
   struct vm_rg_struct *rgit = cur_vma->vm_freerg_list;
 
   if (rgit == NULL)
@@ -635,7 +691,7 @@ int get_free_vmrg_area(struct pcb_t *caller, int vmaid, int size, struct vm_rg_s
         /*Clone next rg node */
         struct vm_rg_struct *nextrg = rgit->rg_next;
 
-        /*Cloning */
+        /*Copy rg_next to rgit, clear re next - clone rg next*/
         if (nextrg != NULL)
         {
           rgit->rg_start = nextrg->rg_start;
