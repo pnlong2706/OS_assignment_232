@@ -159,6 +159,11 @@ int alloc_pages_range(struct pcb_t *caller, int req_pgnum, struct framephy_struc
       vicpgn = victim_fp->pte_id;
       uint32_t vicpte = victim_fp->owner->pgd[vicpgn];
       int vicfpn = PAGING_FPN(vicpte);
+
+#ifdef CPU_TLB
+      // update on live TLB
+      tlb_cache_set_invalid(caller->tlb, caller, vicpgn);
+#endif
       __swap_cp_page(victim_fp->p_owner->mram, vicfpn, caller->active_mswp, swpfpn);
       pte_set_swap(&victim_fp->owner->pgd[vicpgn], 0, swpfpn);
       newfp_str->fpn = vicfpn;
