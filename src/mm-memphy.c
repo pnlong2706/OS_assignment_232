@@ -189,6 +189,21 @@ int MEMPHY_put_freefp(struct memphy_struct *mp, int fpn)
    return 0;
 }
 
+int MEMPHY_free_frame(struct memphy_struct *mp, int fpn) {
+   struct framephy_struct* fpit = mp->used_fp_list, *prev = NULL;
+   while(fpit!=NULL) {
+      if(fpit->fpn == fpn) {
+         prev->fp_next = fpit->fp_next;
+         MEMPHY_put_freefp(mp, fpn);
+         free(fpit);
+         return 0;
+      }
+      prev = fpit;
+      fpit = fpit->fp_next;
+   }
+   return -1;
+}
+
 
 /*
  *  Init MEMPHY struct
