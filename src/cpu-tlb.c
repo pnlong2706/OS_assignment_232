@@ -85,22 +85,14 @@ int tlbfree_data(struct pcb_t *proc, uint32_t reg_index)
 
   /* TODO update TLB CACHED frame num of freed page(s)*/
   /* by using tlb_cache_read()/tlb_cache_write()*/
-  unsigned int num_tlb_entries = proc->tlb->maxsz / ENTRY_SIZE;
 
   for(int pgn = pg_st; pgn <= pg_ed; pgn++) {
-
-    unsigned int concat_address = (proc->pid<<14) + pgn; // retrive the combined address
-    unsigned int tlbnum = concat_address % num_tlb_entries;
-
-    unsigned int phy_adr = tlbnum * ENTRY_SIZE;
-
-    BYTE temp;
-    TLBMEMPHY_read(proc->tlb, phy_adr, &temp);
-    TLBMEMPHY_write(proc->tlb, phy_adr, (temp & ((1<<7)-1))); // valid bit to 0
+    tlb_cache_set_invalid(proc->tlb, proc, pgn);
   }
 
   return 0;
 }
+
 
 
 /*tlbread - CPU TLB-based read a region memory
