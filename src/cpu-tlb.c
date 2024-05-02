@@ -13,6 +13,7 @@
  */
  
 #include "mm.h"
+#include "os-mm.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <pthread.h>
@@ -22,15 +23,25 @@ static pthread_mutex_t mmvm_lock = PTHREAD_MUTEX_INITIALIZER;
 int tlb_change_all_page_tables_of(struct pcb_t *proc,  struct memphy_struct * mp)
 {
   /* TODO update all page table directory info 
-   *      in flush or wipe TLB (if needed)
+   *      in flush or wipe TLB (if needed) 
    */
 
+  /**
+   * Maybe we dont need this
+  */
+  
   return 0;
 }
 
 int tlb_flush_tlb_of(struct pcb_t *proc, struct memphy_struct * mp)
 {
-  /* TODO flush tlb cached*/
+  struct vm_area_struct* vma = get_vma_by_num(proc->mm, 0);
+  int pg_st = 0;
+  int pg_ed = (vma->vm_end -1) / PAGING_PAGESZ;
+
+  for(int pgn = pg_st; pgn <= pg_ed; pgn++) {
+    tlb_cache_set_invalid(mp, proc, pgn);
+  } 
 
   return 0;
 }
@@ -81,7 +92,7 @@ int tlbfree_data(struct pcb_t *proc, uint32_t reg_index)
   int pg_st = rgnode->rg_start / PAGING_PAGESZ;
   int pg_ed = (rgnode->rg_end-1) / PAGING_PAGESZ;
   
-  __free(proc, 0, reg_index);
+  if(__free(proc, 0, reg_index)==-1) return -1;
 
   /* TODO update TLB CACHED frame num of freed page(s)*/
   /* by using tlb_cache_read()/tlb_cache_write()*/
@@ -121,8 +132,8 @@ int tlbread(struct pcb_t * proc, uint32_t source,
 
 #ifdef IODUMP
   if (frmnum >= 0) {
-    printf("\tTLB hit at read region=%d offset=%d\n", 
-	         source, offset);
+    printf("\tTLB hit at read region=%d offset=%d, Read value = %d\n", 
+	         source, offset, data);
     pthread_mutex_lock(&mmvm_lock);
     proc->stat_hit_time ++;
     pthread_mutex_unlock(&mmvm_lock);
