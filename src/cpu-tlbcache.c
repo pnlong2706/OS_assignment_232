@@ -184,6 +184,36 @@ int tlb_cache_write(struct memphy_struct *mp, struct pcb_t* proc, int pgnum)
    return 0;
 }
 
+int tlb_cache_set_invalid(struct memphy_struct *mp, struct pcb_t* proc, int pgnum) {
+   int pid = proc->pid;
+   const unsigned int num_tlb_entries = mp->maxsz / ENTRY_SIZE;
+
+   unsigned int concat_address = (pid<<14) + pgnum; // retrive the combined address
+   unsigned int tlbnum = ((pid<<5) + pgnum%(1<<5)) % num_tlb_entries;
+
+   unsigned int phy_adr = tlbnum * ENTRY_SIZE;
+   unsigned int tag, wvalue[2];
+
+   unsigned int valid_mask = (1<<31);
+
+   wvalue[0] = TLBMEMPHY_read_word(mp, phy_adr);
+   wvalue[1] = TLBMEMPHY_read_word(mp, phy_adr+8);
+
+   if(wvalue[0]==-1 || wvalue[1]==-1) return -1;
+   
+   for(int i=0; i<2; i++, phy_adr+=8) {
+      if((wvalue[i] & valid_mask) ==0) continue;
+
+      tag = wvalue[i] % (1<<30);
+      if(tag == concat_address) {
+         TLBMEMPHY_write_word(mp, phy_adr, 0);
+         TLBMEMPHY_write_word(mp, phy_adr+4, 0);
+         return 0;
+      }
+   }
+   return 0;
+}
+
 unsigned int TLBMEMPHY_read_word(struct memphy_struct * mp, int addr) {
    unsigned int val = 0;
    for(int i=0; i<4; i++) {
