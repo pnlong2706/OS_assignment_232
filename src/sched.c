@@ -1,6 +1,7 @@
 
 #include "queue.h"
 #include "sched.h"
+#include "mm.h"
 #include <pthread.h>
 
 #include <stdlib.h>
@@ -88,6 +89,25 @@ void add_proc(struct pcb_t * proc) {
 void finish_proc(struct pcb_t **proc){
 	pthread_mutex_lock(&queue_lock);
 	mlq_ready_queue[(*proc)->prio].slot++;
+#ifdef CPU_TLB
+	tlb_flush_tlb_of((*proc),(*proc)->tlb);
+	struct vm_area_struct *vma = get_vma_by_num((*proc)->mm, 0);
+	struct mm_struct* mm = (*proc)->mm;
+	int pg_st = vma->vm_start;
+	int pg_ed = (vma->vm_end-1) / PAGING_PAGESZ ;
+
+	for(int pgn = pg_st; pgn <=pg_ed; pgn++) {
+		int pte = mm->pgd[pgn];
+		if(PAGING_PAGE_PRESENT(pte)) {
+			int fpn = PAGING_FPN(pte);
+			MEMPHY_free_frame((*proc)->mram, fpn);
+		}
+		else {
+			int fpn = PAGING_SWP(pte);
+			MEMPHY_free_frame((*proc)->active_mswp, fpn);
+		}
+	}
+#endif
 	pthread_mutex_unlock(&queue_lock);
 	free(*proc);
 }
